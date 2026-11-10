@@ -1,19 +1,9 @@
 console.log("EyeRest JavaScript 연결 성공");
 
-/*
- * 개발 중에는 타이머를 초 단위로 시험한다.
- *
- * true:
- * 양호 20초, 주의 15초, 휴식 권장 10초
- *
- * false:
- * 양호 20분, 주의 15분, 휴식 권장 10분
- */
-const DEMO_MODE = true;
+/* =================================
+   기본 요소
+================================= */
 
-/*
- * 사용자가 입력하는 증상 항목의 id
- */
 const symptomIds = [
   "fatigue",
   "dryness",
@@ -21,400 +11,379 @@ const symptomIds = [
   "discomfort"
 ];
 
-/*
- * HTML 요소 가져오기
- */
-const checkButton = document.getElementById("checkButton");
-const startWorkButton = document.getElementById("startWorkButton");
+const infoButtons =
+  document.querySelectorAll(".info-button");
 
-const resultCard = document.getElementById("resultCard");
-const statusBadge = document.getElementById("statusBadge");
-const totalScoreElement = document.getElementById("totalScore");
-const resultMessage = document.getElementById("resultMessage");
+const checkButton =
+  document.getElementById("checkButton");
 
-const timerCard = document.getElementById("timerCard");
-const timerStatus = document.getElementById("timerStatus");
-const timerDisplay = document.getElementById("timerDisplay");
+const resultCard =
+  document.getElementById("resultCard");
 
-const pauseButton = document.getElementById("pauseButton");
-const endWorkButton = document.getElementById("endWorkButton");
+const statusBadge =
+  document.getElementById("statusBadge");
 
-const breakCard = document.getElementById("breakCard");
-const breakTimerDisplay =
-  document.getElementById("breakTimerDisplay");
+const totalScoreElement =
+  document.getElementById("totalScore");
 
-const completeBreakButton =
-  document.getElementById("completeBreakButton");
-
-const postponeBreakButton =
-  document.getElementById("postponeBreakButton");
+const resultMessage =
+  document.getElementById("resultMessage");
 
 /*
- * 현재 작업 세션 상태
+ * 점수 입력 기준 안내
  */
-let currentResult = null;
+const scaleGuideButton =
+  document.getElementById(
+    "scaleGuideButton"
+  );
 
-let workTimerId = null;
-let breakTimerId = null;
-
-let remainingWorkSeconds = 0;
-let remainingBreakSeconds = 20;
-
-let isWorkPaused = false;
-
-let completedBreaks = 0;
-let postponedBreaks = 0;
+const scaleGuidePanel =
+  document.getElementById(
+    "scaleGuidePanel"
+  );
 
 /*
- * 슬라이더의 숫자를 실시간으로 표시한다.
+ * 이용 안내
  */
+const usageGuideButton =
+  document.getElementById(
+    "usageGuideButton"
+  );
+
+const usageGuidePanel =
+  document.getElementById(
+    "usageGuidePanel"
+  );
+
+/* =================================
+   슬라이더 값 표시
+================================= */
+
 symptomIds.forEach((id) => {
-  const slider = document.getElementById(id);
+  const slider =
+    document.getElementById(id);
+
   const valueElement =
-    document.getElementById(`${id}Value`);
+    document.getElementById(
+      `${id}Value`
+    );
 
   if (!slider || !valueElement) {
-    console.error(`${id} 관련 요소를 찾을 수 없습니다.`);
+    console.error(
+      `${id} 입력 요소를 찾을 수 없습니다.`
+    );
+
     return;
   }
 
-  slider.addEventListener("input", () => {
-    valueElement.textContent = slider.value;
+  slider.addEventListener(
+    "input",
+    () => {
+      valueElement.textContent =
+        slider.value;
+    }
+  );
+});
+
+/* =================================
+   증상 설명 툴팁
+================================= */
+
+function closeAllTooltips(
+  exceptButton = null
+) {
+  infoButtons.forEach((button) => {
+    if (button === exceptButton) {
+      return;
+    }
+
+    const tooltipId =
+      button.getAttribute(
+        "aria-controls"
+      );
+
+    const tooltip =
+      document.getElementById(
+        tooltipId
+      );
+
+    button.classList.remove("active");
+
+    button.setAttribute(
+      "aria-expanded",
+      "false"
+    );
+
+    tooltip?.classList.remove(
+      "visible"
+    );
   });
+}
+
+infoButtons.forEach((button) => {
+  button.addEventListener(
+    "click",
+    (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const tooltipId =
+        button.getAttribute(
+          "aria-controls"
+        );
+
+      const tooltip =
+        document.getElementById(
+          tooltipId
+        );
+
+      if (!tooltip) {
+        return;
+      }
+
+      const isOpen =
+        tooltip.classList.contains(
+          "visible"
+        );
+
+      closeAllTooltips(button);
+
+      button.classList.toggle(
+        "active",
+        !isOpen
+      );
+
+      button.setAttribute(
+        "aria-expanded",
+        String(!isOpen)
+      );
+
+      tooltip.classList.toggle(
+        "visible",
+        !isOpen
+      );
+    }
+  );
 });
 
 /*
- * 네 가지 증상 점수의 합을 계산한다.
+ * 툴팁 영역 밖을 누르면
+ * 클릭으로 고정된 툴팁을 닫는다.
  */
-function calculateTotalScore() {
-  let totalScore = 0;
+document.addEventListener(
+  "click",
+  (event) => {
+    const clickedInfoArea =
+      event.target.closest(
+        ".question-title"
+      );
 
-  symptomIds.forEach((id) => {
-    const input = document.getElementById(id);
-    totalScore += Number(input.value);
-  });
-
-  return totalScore;
-}
+    if (!clickedInfoArea) {
+      closeAllTooltips();
+    }
+  }
+);
 
 /*
- * 점수에 따라 휴식 안내 수준과 작업 주기를 결정한다.
- *
- * 이 점수 구간은 의료 진단 기준이 아니라
- * 프로토타입의 휴식 안내를 위한 설계 규칙이다.
+ * Esc 키로 툴팁 닫기
  */
-function classifyEyeCondition(totalScore) {
+document.addEventListener(
+  "keydown",
+  (event) => {
+    if (event.key === "Escape") {
+      closeAllTooltips();
+    }
+  }
+);
+
+/* =================================
+   공통 접기·펼치기 함수
+================================= */
+
+function toggleGuidePanel(
+  button,
+  panel
+) {
+  if (!button || !panel) {
+    return;
+  }
+
+  const isOpen =
+    button.getAttribute(
+      "aria-expanded"
+    ) === "true";
+
+  const nextOpenState =
+    !isOpen;
+
+  button.setAttribute(
+    "aria-expanded",
+    String(nextOpenState)
+  );
+
+  panel.hidden =
+    !nextOpenState;
+
+  const icon =
+    button.querySelector(
+      ".toggle-icon"
+    );
+
+  if (icon) {
+    icon.textContent =
+      nextOpenState
+        ? "－"
+        : "＋";
+  }
+}
+
+/* =================================
+   점수 입력 기준 펼치기
+================================= */
+
+scaleGuideButton?.addEventListener(
+  "click",
+  () => {
+    closeAllTooltips();
+
+    toggleGuidePanel(
+      scaleGuideButton,
+      scaleGuidePanel
+    );
+  }
+);
+
+/* =================================
+   이용 안내 펼치기
+================================= */
+
+usageGuideButton?.addEventListener(
+  "click",
+  () => {
+    closeAllTooltips();
+
+    toggleGuidePanel(
+      usageGuideButton,
+      usageGuidePanel
+    );
+  }
+);
+
+/* =================================
+   총점 계산
+================================= */
+
+function calculateTotalScore() {
+  return symptomIds.reduce(
+    (total, id) => {
+      const slider =
+        document.getElementById(id);
+
+      if (!slider) {
+        return total;
+      }
+
+      return (
+        total +
+        Number(slider.value)
+      );
+    },
+    0
+  );
+}
+
+/* =================================
+   초기 프로토타입 불편 수준 요약
+================================= */
+
+function summarizeDiscomfort(
+  totalScore
+) {
+  /*
+   * 아래 구간은 의료적 진단 기준이 아니다.
+   * 사용자 평가 전의 초기 규칙이다.
+   */
+
   if (totalScore <= 5) {
     return {
-      status: "양호",
-      color: "#1ca7a6",
-      workMinutes: 20,
+      level:
+        "현재 불편감 낮음",
+
+      color:
+        "#1ca7a6",
+
       message:
-        "현재 불편 정도가 낮습니다. 작업 중에도 정기적으로 눈을 쉬어 주세요."
+        "현재 입력한 불편감이 낮습니다. " +
+        "원하는 작업시간을 선택하고 정기적으로 " +
+        "눈을 쉬어 주세요."
     };
   }
 
   if (totalScore <= 12) {
     return {
-      status: "주의",
-      color: "#f2a23a",
-      workMinutes: 15,
+      level:
+        "현재 불편감 있음",
+
+      color:
+        "#f2a23a",
+
       message:
-        "눈의 불편감이 확인되었습니다. 평소보다 조금 이른 휴식을 권장합니다."
+        "현재 일부 불편감이 입력되었습니다. " +
+        "작업 전에 잠시 쉬거나 짧은 작업 주기를 " +
+        "선택해 보세요."
     };
   }
 
   return {
-    status: "휴식 권장",
-    color: "#ff7a66",
-    workMinutes: 10,
+    level:
+      "현재 불편감 높음",
+
+    color:
+      "#e86f61",
+
     message:
-      "현재 눈 휴식이 권장되는 상태입니다. 작업 전에 잠시 화면에서 눈을 떼어 주세요."
+      "현재 높은 불편감이 입력되었습니다. " +
+      "작업을 시작하기 전에 화면에서 시선을 떼고 " +
+      "잠시 쉬는 것을 우선 권장합니다."
   };
 }
 
-/*
- * 초 단위 시간을 00:00 형식으로 변환한다.
- *
- * 예:
- * 65초 → 01:05
- */
-function formatTime(totalSeconds) {
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
+/* =================================
+   입력 결과 확인
+================================= */
 
-  const minuteText = String(minutes).padStart(2, "0");
-  const secondText = String(seconds).padStart(2, "0");
+checkButton.addEventListener(
+  "click",
+  () => {
+    const totalScore =
+      calculateTotalScore();
 
-  return `${minuteText}:${secondText}`;
-}
+    const result =
+      summarizeDiscomfort(
+        totalScore
+      );
 
-/*
- * 실행 중인 작업 타이머를 안전하게 제거한다.
- */
-function clearWorkTimer() {
-  if (workTimerId !== null) {
-    clearInterval(workTimerId);
-    workTimerId = null;
+    totalScoreElement.textContent =
+      totalScore;
+
+    statusBadge.textContent =
+      result.level;
+
+    statusBadge.style.backgroundColor =
+      result.color;
+
+    resultMessage.textContent =
+      result.message;
+
+    closeAllTooltips();
+
+    resultCard.classList.remove(
+      "hidden"
+    );
+
+    resultCard.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
   }
-}
-
-/*
- * 실행 중인 휴식 타이머를 안전하게 제거한다.
- */
-function clearBreakTimer() {
-  if (breakTimerId !== null) {
-    clearInterval(breakTimerId);
-    breakTimerId = null;
-  }
-}
-
-/*
- * 상태 확인 버튼
- */
-checkButton.addEventListener("click", () => {
-  const totalScore = calculateTotalScore();
-
-  currentResult =
-    classifyEyeCondition(totalScore);
-
-  totalScoreElement.textContent = totalScore;
-
-  statusBadge.textContent =
-    currentResult.status;
-
-  statusBadge.style.backgroundColor =
-    currentResult.color;
-
-  resultMessage.textContent =
-    `${currentResult.message} 권장 작업 주기는 ` +
-    `${currentResult.workMinutes}분입니다.`;
-
-  resultCard.classList.remove("hidden");
-
-  resultCard.scrollIntoView({
-    behavior: "smooth",
-    block: "start"
-  });
-
-  console.log("눈 상태 판정 결과:", {
-    totalScore,
-    status: currentResult.status,
-    workMinutes: currentResult.workMinutes
-  });
-});
-
-/*
- * 작업 시작 버튼
- */
-startWorkButton.addEventListener("click", () => {
-  if (!currentResult) {
-    alert("먼저 눈 상태를 확인해 주세요.");
-    return;
-  }
-
-  startWorkSession();
-});
-
-/*
- * 새로운 작업 세션을 시작한다.
- */
-function startWorkSession() {
-  clearWorkTimer();
-  clearBreakTimer();
-
-  isWorkPaused = false;
-  pauseButton.textContent = "일시 정지";
-
-  /*
-   * 개발 모드에서는 분 대신 초로 시험한다.
-   */
-  if (DEMO_MODE) {
-    remainingWorkSeconds =
-      currentResult.workMinutes;
-  } else {
-    remainingWorkSeconds =
-      currentResult.workMinutes * 60;
-  }
-
-  timerDisplay.textContent =
-    formatTime(remainingWorkSeconds);
-
-  timerStatus.textContent =
-    DEMO_MODE
-      ? "시연 모드: 다음 휴식까지 남은 시간"
-      : "다음 휴식까지 남은 시간";
-
-  resultCard.classList.add("hidden");
-  breakCard.classList.add("hidden");
-  timerCard.classList.remove("hidden");
-
-  timerCard.scrollIntoView({
-    behavior: "smooth",
-    block: "start"
-  });
-
-  runWorkTimer();
-}
-
-/*
- * 작업 타이머를 실행한다.
- */
-function runWorkTimer() {
-  clearWorkTimer();
-
-  workTimerId = setInterval(() => {
-    if (isWorkPaused) {
-      return;
-    }
-
-    remainingWorkSeconds -= 1;
-
-    timerDisplay.textContent =
-      formatTime(remainingWorkSeconds);
-
-    if (remainingWorkSeconds <= 0) {
-      clearWorkTimer();
-      showBreakScreen();
-    }
-  }, 1000);
-}
-
-/*
- * 작업 일시 정지 및 재개
- */
-pauseButton.addEventListener("click", () => {
-  isWorkPaused = !isWorkPaused;
-
-  if (isWorkPaused) {
-    pauseButton.textContent = "계속하기";
-    timerStatus.textContent = "작업이 일시 정지되었습니다.";
-  } else {
-    pauseButton.textContent = "일시 정지";
-    timerStatus.textContent =
-      "다음 휴식까지 남은 시간";
-  }
-});
-
-/*
- * 작업 종료
- */
-endWorkButton.addEventListener("click", () => {
-  const shouldEnd =
-    window.confirm("현재 작업을 종료하시겠습니까?");
-
-  if (!shouldEnd) {
-    return;
-  }
-
-  clearWorkTimer();
-  clearBreakTimer();
-
-  timerCard.classList.add("hidden");
-  breakCard.classList.add("hidden");
-  resultCard.classList.remove("hidden");
-
-  resultMessage.textContent =
-    `작업이 종료되었습니다. ` +
-    `완료한 휴식은 ${completedBreaks}회, ` +
-    `연기한 휴식은 ${postponedBreaks}회입니다.`;
-});
-
-/*
- * 작업시간이 끝나면 휴식 화면을 표시한다.
- */
-function showBreakScreen() {
-  clearWorkTimer();
-
-  timerCard.classList.add("hidden");
-  breakCard.classList.remove("hidden");
-
-  remainingBreakSeconds = 20;
-
-  breakTimerDisplay.textContent =
-    formatTime(remainingBreakSeconds);
-
-  breakCard.scrollIntoView({
-    behavior: "smooth",
-    block: "start"
-  });
-
-  runBreakTimer();
-}
-
-/*
- * 20초 휴식 타이머
- */
-function runBreakTimer() {
-  clearBreakTimer();
-
-  breakTimerId = setInterval(() => {
-    remainingBreakSeconds -= 1;
-
-    breakTimerDisplay.textContent =
-      formatTime(remainingBreakSeconds);
-
-    if (remainingBreakSeconds <= 0) {
-      clearBreakTimer();
-
-      breakTimerDisplay.textContent =
-        "휴식 완료 가능";
-    }
-  }, 1000);
-}
-
-/*
- * 휴식 완료
- */
-completeBreakButton.addEventListener("click", () => {
-  clearBreakTimer();
-
-  completedBreaks += 1;
-
-  alert(
-    `휴식을 완료했습니다.\n` +
-    `현재 휴식 완료 횟수: ${completedBreaks}회`
-  );
-
-  breakCard.classList.add("hidden");
-
-  /*
-   * 같은 눈 상태 판정 결과를 사용해
-   * 다음 작업 주기를 다시 시작한다.
-   */
-  startWorkSession();
-});
-
-/*
- * 휴식 연기
- */
-postponeBreakButton.addEventListener("click", () => {
-  clearBreakTimer();
-
-  postponedBreaks += 1;
-
-  /*
-   * 개발 모드에서는 5초 뒤 다시 알림을 제공한다.
-   * 실제 모드에서는 5분 뒤 다시 알림을 제공한다.
-   */
-  remainingWorkSeconds =
-    DEMO_MODE ? 5 : 5 * 60;
-
-  breakCard.classList.add("hidden");
-  timerCard.classList.remove("hidden");
-
-  timerStatus.textContent =
-    "휴식이 연기되었습니다. 잠시 후 다시 안내합니다.";
-
-  timerDisplay.textContent =
-    formatTime(remainingWorkSeconds);
-
-  isWorkPaused = false;
-  pauseButton.textContent = "일시 정지";
-
-  runWorkTimer();
-
-  console.log(
-    `휴식 연기 횟수: ${postponedBreaks}회`
-  );
-});
+);
